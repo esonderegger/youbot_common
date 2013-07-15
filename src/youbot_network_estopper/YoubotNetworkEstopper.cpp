@@ -41,7 +41,7 @@ bool bad=false;
 void armCallback(const sensor_msgs::JointState::ConstPtr& msg)
 {
   if (msg->position.size()!=7) {
-    ROS_ERROR("Wrong number of joints in JointState message");
+    ROS_WARN_STREAM("Wrong number of joints in JointState message: " << msg->position.size() << ", expected 7");
     return;
   }
   joint[0] = msg->position[0];
@@ -62,6 +62,7 @@ void trajectoryCallback(const control_msgs::FollowJointTrajectoryActionGoal::Con
 void heartbeatCallback(const std_msgs::Bool::ConstPtr& msg)
 {
   if (!has_received_heartbeat) ROS_INFO("Got first heartbeat");
+  else ROS_INFO_STREAM("Got heartbeat " << heartbeat_timeout << " ticks after last one");
   has_received_heartbeat=true;
   heartbeat_timeout=0;
 }
@@ -99,7 +100,6 @@ int main(int argc, char **argv)
   while (n.ok()){
 
     if (bad) {
-
 /*      int readValue;
       static const int numberOfArmJoints = 5;
       static const int numberOfGripperJoints = 2;

@@ -111,6 +111,7 @@ int main(int argc, char **argv)
     youBot.publishArmAndBaseDiagnostics(2.0);    //publish only every 2 seconds
     rate.sleep();
 
+    //automatically attempt a reconnect if ethercat dies
     if (!youBot.youBotConfiguration.isEtherCATOkay()) {
       std_srvs::Empty::Request req;
       std_srvs::Empty::Response res;

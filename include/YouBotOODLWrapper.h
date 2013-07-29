@@ -159,7 +159,7 @@ public:
 	 * @param armIndex Index that identifies the arm
 	 */
 	void armJointTrajectoryCancelCallback(actionlib::ActionServer<control_msgs::FollowJointTrajectoryAction>::GoalHandle youbotArmGoal, unsigned int armIndex);
-    
+
     /**
      * @brief Callback that is executed when a position command for the gripper comes in.
      * @param youbotGripperCommand Message that contains the desired joint configuration.
@@ -174,7 +174,7 @@ public:
      * computeOODLSensorReadings needs to be executed before.
      */
     void publishOODLSensorReadings();
-    
+
     /**
     * @brief Publishes status of base and arm as diagnostic and dashboard messages continuously
     */
@@ -186,7 +186,7 @@ public:
      * @brief Mapps OODL values to ROS messages
      */
     void computeOODLSensorReadings();
-
+    
     bool switchOffBaseMotorsCallback(std_srvs::Empty::Request& request, std_srvs::Empty::Response& response);
 
     bool switchOnBaseMotorsCallback(std_srvs::Empty::Request& request, std_srvs::Empty::Response& response);
@@ -196,7 +196,7 @@ public:
     bool switchOnArmMotorsCallback(std_srvs::Empty::Request& request, std_srvs::Empty::Response& response, int armIndex);
 
     bool calibrateArmCallback(std_srvs::Empty::Request& request, std_srvs::Empty::Response& response, int armIndex);
-
+    
     bool reconnectCallback(std_srvs::Empty::Request& request, std_srvs::Empty::Response& response);
 
     /* Configuration: */
@@ -240,6 +240,9 @@ private:
 
     /// The quaternion inside the tf odometry frame with distances in [m]
     geometry_msgs::Quaternion odometryQuaternion;
+
+    /// A tf transform by which the odometry is offset. This is used to prevent the odometry from zeroing upon reconnect.
+    tf::Transform odometryOffset;
 
     /// The published joint state of the base (wheels) with angles in [RAD] and velocities in [RAD/s]
     sensor_msgs::JointState baseJointStateMessage;

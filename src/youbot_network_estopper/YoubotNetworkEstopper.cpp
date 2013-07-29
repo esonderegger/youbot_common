@@ -7,6 +7,7 @@
 #include "sensor_msgs/JointState.h"
 #include "geometry_msgs/Twist.h"
 #include "control_msgs/FollowJointTrajectoryActionGoal.h"
+#include "move_base_msgs/MoveBaseActionGoal.h"
 #include "actionlib_msgs/GoalID.h"
 
 #include <boost/units/systems/si/length.hpp>
@@ -25,9 +26,12 @@ ros::Publisher cmd_vel_pub;
 ros::Publisher arm_pub;
 ros::Publisher gripper_pub;
 ros::Publisher trajectory_cancel_pub;
+ros::Publisher move_base_cancel_pub;
 
 bool received_trajectory=false;
 std::string lastGoalID;
+bool received_move_base=false;
+std::string lastBaseGoalID;
 
 double joint[5];
 double gripperr = 0;
@@ -38,10 +42,12 @@ int heartbeat_timeout=0;
 const int heartbeat_timeout_max=50;
 bool bad=false;
 
+ros::Time last_heartbeat_time;
+
 void armCallback(const sensor_msgs::JointState::ConstPtr& msg)
 {
   if (msg->position.size()!=7) {
-    ROS_WARN_STREAM("Wrong number of joints in JointState message: " << msg->position.size() << ", expected 7");
+    if (msg->position.size()!=8) ROS_WARN_STREAM("Wrong number of joints in JointState message: " << msg->position.size() << ", expected 7");
     return;
   }
   joint[0] = msg->position[0];
@@ -59,12 +65,39 @@ void trajectoryCallback(const control_msgs::FollowJointTrajectoryActionGoal::Con
   lastGoalID = msg->goal_id.id;
 }
 
+void moveBaseCallback(const move_base_msgs::MoveBaseActionGoal::ConstPtr& msg)
+{
+  received_move_base=true;
+  lastBaseGoalID = msg->goal_id.id;
+}
+
 void heartbeatCallback(const std_msgs::Bool::ConstPtr& msg)
 {
+  ros::Time now = ros::Time::now();
   if (!has_received_heartbeat) ROS_INFO("Got first heartbeat");
-  else ROS_INFO_STREAM("Got heartbeat " << heartbeat_timeout << " ticks after last one");
+  else {
+    //ROS_INFO_STREAM("Got heartbeat " << heartbeat_timeout << " ticks after last one");
+    double secs = (now-last_heartbeat_time).toSec();
+    if (secs>=heartbeat_timeout_max*0.01)
+    {
+      ROS_WARN_STREAM("Got heartbeat " << (now-last_heartbeat_time).toSec() << " seconds after last");
+      //heartbeat is late so we have timed out already
+      //call reconnect and reset state
+      std_srvs::Empty::Request req;
+      std_srvs::Empty::Response res;
+      if (ros::service::call("/reconnect",req,res)) {
+        bad=false;
+        now=ros::Time::now();
+      }
+    }
+    else
+    {
+      ROS_INFO_STREAM("Got heartbeat " << (now-last_heartbeat_time).toSec() << " seconds after last");
+    }
+  }
   has_received_heartbeat=true;
   heartbeat_timeout=0;
+  last_heartbeat_time=now;
 }
 
 int main(int argc, char **argv)
@@ -89,11 +122,16 @@ int main(int argc, char **argv)
   ros::Subscriber jointFollowerSubscriber;
   jointFollowerSubscriber = n.subscribe("arm_1/arm_controller/follow_joint_trajectory/goal",1,trajectoryCallback);
 
+  ROS_INFO("Subscribing to move base commands");
+  ros::Subscriber moveBaseSubscriber;
+  moveBaseSubscriber = n.subscribe("move_base/goal", 1, moveBaseCallback);
+
   ROS_INFO("Advertising publishers");
   cmd_vel_pub = n.advertise<geometry_msgs::Twist>("cmd_vel",1);
   arm_pub = n.advertise<brics_actuator::JointPositions>("arm_1/arm_controller/position_command", 1);
   gripper_pub = n.advertise<brics_actuator::JointPositions>("arm_1/gripper_controller/position_command", 1);
   trajectory_cancel_pub = n.advertise<actionlib_msgs::GoalID>("arm_1/arm_controller/follow_joint_trajectory/cancel",1);
+  move_base_cancel_pub = n.advertise<actionlib_msgs::GoalID>("move_base/cancel",1);
 
   ros::Rate rate(100); //Input and output at the same time... (in Hz)
 
@@ -148,6 +186,12 @@ int main(int argc, char **argv)
         actionlib_msgs::GoalID goal_id;
         goal_id.id=lastGoalID;
         trajectory_cancel_pub.publish(goal_id);
+      }
+
+      if (received_move_base) {
+        actionlib_msgs::GoalID goal_id;
+        goal_id.id=lastBaseGoalID;
+        move_base_cancel_pub.publish(goal_id);
       }
 
       //kill motors

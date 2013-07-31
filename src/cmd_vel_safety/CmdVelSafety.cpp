@@ -123,7 +123,7 @@ int main(int argc, char **argv)
 
   ros::NodeHandle n;
 
-  n.getParam("/move_base_node/global_costmap/inflation_radius",stop_radius);
+  n.getParam("/move_base_node/local_costmap/inflation_radius",stop_radius);
   ROS_INFO("Using obstacle radius of %lf",stop_radius);
   inflation_radius=max(stop_radius*1.5,stop_radius+0.2);
 
@@ -134,7 +134,7 @@ int main(int argc, char **argv)
   cmd_vel_sub = n.subscribe("cmd_vel_unsafe", 1, cmdVelCallback);
 
   ros::Subscriber grid_sub;
-  ROS_INFO("Subscribing to /move_base_node/global_costmap/obstacles");
+  ROS_INFO("Subscribing to /move_base_node/local_costmap/obstacles");
   grid_sub = n.subscribe("/move_base_node/global_costmap/obstacles", 1, obstaclesCallback);
 
   ROS_INFO("Advertising safe command velocity publisher");

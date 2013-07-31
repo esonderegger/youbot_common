@@ -819,8 +819,7 @@ void YouBotOODLWrapper::computeOODLSensorReadings()
       quantity < si::angular_velocity > angularVelocity;
 
       //get odometry from the base
-      youBotConfiguration.baseConfiguration.youBotBase->getBasePosition(longitudinalPosition, transversalPosition,
-                                                                        orientation);
+      youBotConfiguration.baseConfiguration.youBotBase->getBasePosition(longitudinalPosition, transversalPosition, orientation);
       //apply offsets
       tf::Transform currentOdom;
       tf::Vector3 rotatedOrigin;
@@ -832,6 +831,10 @@ void YouBotOODLWrapper::computeOODLSensorReadings()
       x = currentOdom.getOrigin().getX();
       y = currentOdom.getOrigin().getY();
       theta = orientation.value()+tf::getYaw(odometryOffset.getRotation());
+
+      last_x=x;
+      last_y=y;
+      last_theta=theta;
 
       //get velocities
       youBotConfiguration.baseConfiguration.youBotBase->getBaseVelocity(longitudinalVelocity, transversalVelocity,
@@ -1262,9 +1265,25 @@ bool YouBotOODLWrapper::reconnectCallback(std_srvs::Empty::Request& request, std
     catch (std::exception& e) {
       std::string errorMessage = e.what();
       ROS_WARN("Cannot get the base position for reconnect: %s", errorMessage.c_str());
-      longitudinalPosition=0*si::meter;
-      transversalPosition=0*si::meter;
-      orientation=0*si::radian;
+
+      try {
+        ROS_INFO("Using the last-recorded position instead");
+        longitudinalPosition=last_x*si::meter;
+        transversalPosition=last_y*si::meter;
+        orientation=last_theta*si::radian;
+      }
+      catch (std::exception& darn) {
+        ROS_WARN("No last-recorded position, teleporting to zero :O  error:%s",darn.what());
+        longitudinalPosition=0*si::meter;
+        transversalPosition=0*si::meter;
+        orientation=0*si::radian;
+      }
+      odometryOffset.getOrigin().setX(longitudinalPosition.value());
+      odometryOffset.getOrigin().setY(transversalPosition.value());
+      tf::Quaternion q;
+      q.setRPY(0,0,last_theta);
+      odometryOffset.setRotation(q);
+      ROS_INFO_STREAM("Odom before reconnect: (x,y,theta)=(" << odometryOffset.getOrigin().getX() << ", " << odometryOffset.getOrigin().getY() << ", " << tf::getYaw(odometryOffset.getRotation()) << ")");
     }
   } //end store current odom
 

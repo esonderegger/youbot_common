@@ -243,6 +243,8 @@ private:
 
     /// A tf transform by which the odometry is offset. This is used to prevent the odometry from zeroing upon reconnect.
     tf::Transform odometryOffset;
+    /// The previously-recorded positions. These are needed if ethercat is dead when a reconnect is called.
+    double last_x,last_y,last_theta;
 
     /// The published joint state of the base (wheels) with angles in [RAD] and velocities in [RAD/s]
     sensor_msgs::JointState baseJointStateMessage;

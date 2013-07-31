@@ -89,6 +89,9 @@ target_link_libraries(youbot_network_estopper ${catkin_LIBRARIES})
 add_executable(heartbeat_generator src/youbot_network_estopper/HeartbeatGenerator.cpp)
 target_link_libraries(heartbeat_generator ${catkin_LIBRARIES})
 
+add_executable(cmd_vel_safety src/cmd_vel_safety/CmdVelSafety.cpp)
+target_link_libraries(cmd_vel_safety ${catkin_LIBRARIES})
+
 #############
 ## Install ##
 #############

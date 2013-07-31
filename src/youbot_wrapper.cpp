@@ -37,7 +37,8 @@
  *
  ******************************************************************************/
 
-#include <youbot_oodl/YouBotOODLWrapper.h>
+
+#include <YouBotOODLWrapper.h>
 #include <stdlib.h>
 
 int main(int argc, char **argv)
@@ -46,7 +47,7 @@ int main(int argc, char **argv)
   youbot::Logger::toConsole = false;
   youbot::Logger::toFile = false;
   youbot::Logger::toROS = true;
-  ros::init(argc, argv, "youbot_oodl_driver");
+  ros::init(argc, argv, "youbot_wrapper");
   ros::NodeHandle n;
   youBot::YouBotOODLWrapper youBot(n);
   std::vector<std::string> armNames;
@@ -62,7 +63,7 @@ int main(int argc, char **argv)
   //get the config file path from an environment variable
   char* configLocation = getenv("YOUBOT_CONFIG_FOLDER_LOCATION");
   if (configLocation == NULL)
-    throw std::runtime_error("YouBotArmTest.cpp: Could not find environment variable YOUBOT_CONFIG_FOLDER_LOCATION");
+    throw std::runtime_error("youbot_wrapper.cpp: Could not find environment variable YOUBOT_CONFIG_FOLDER_LOCATION");
 
   n.param < std::string
       > ("youBotConfigurationFilePath", youBot.youBotConfiguration.configurationFilePath, configLocation);
@@ -109,6 +110,14 @@ int main(int argc, char **argv)
     youBot.publishOODLSensorReadings();
     youBot.publishArmAndBaseDiagnostics(2.0);    //publish only every 2 seconds
     rate.sleep();
+
+    //automatically attempt a reconnect if ethercat dies
+    if (!youBot.youBotConfiguration.isEtherCATOkay()) {
+      std_srvs::Empty::Request req;
+      std_srvs::Empty::Response res;
+      youBot.reconnectCallback(req,res);
+    }
+
   }
 
   youBot.stop();

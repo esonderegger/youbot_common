@@ -37,10 +37,11 @@
  *
  ******************************************************************************/
 
-#include <youbot_oodl/YouBotOODLWrapper.h>
-#include <youbot_oodl/joint_state_observer_oodl.h>
+#include <YouBotOODLWrapper.h>
+#include <joint_state_observer.h>
 
-#include <youbot_oodl/youbot_trajectory_action_server/joint_trajectory_action.h>
+#include <youbot_trajectory_action_server/joint_trajectory_action.h>
+
 #include <sstream>
 
 namespace youBot
@@ -69,19 +70,22 @@ YouBotOODLWrapper::YouBotOODLWrapper(ros::NodeHandle n) :
   gripperCycleCounter = 0;
   diagnosticNameArms = "platform_Arms";
   diagnosticNameBase = "platform_Base";
-  dashboardMessagePublisher = n.advertise < youbot_oodl::PowerBoardState > ("/dashboard/platform_state", 1);
+  dashboardMessagePublisher = n.advertise < youbot_common::PowerBoardState > ("/dashboard/platform_state", 1);
   diagnosticArrayPublisher = n.advertise < diagnostic_msgs::DiagnosticArray > ("/diagnostics", 1);
 }
 
 YouBotOODLWrapper::~YouBotOODLWrapper()
 {
+
   this->stop();
   dashboardMessagePublisher.shutdown();
   diagnosticArrayPublisher.shutdown();
+
 }
 
 void YouBotOODLWrapper::initializeBase(std::string baseName)
 {
+
 
   try
   {
@@ -120,6 +124,7 @@ void YouBotOODLWrapper::initializeBase(std::string baseName)
   ROS_INFO("Base is initialized.");
   youBotConfiguration.hasBase = true;
   areBaseMotorsSwitchedOn = true;
+
 }
 
 void YouBotOODLWrapper::initializeArm(std::string armName, bool enableStandardGripper)
@@ -786,6 +791,7 @@ void YouBotOODLWrapper::gripperPositionsCommandCallback(
 void YouBotOODLWrapper::computeOODLSensorReadings()
 {
 
+
   try
   {
     currentTime = ros::Time::now();
@@ -812,12 +818,25 @@ void YouBotOODLWrapper::computeOODLSensorReadings()
       quantity < si::velocity > transversalVelocity;
       quantity < si::angular_velocity > angularVelocity;
 
-      youBotConfiguration.baseConfiguration.youBotBase->getBasePosition(longitudinalPosition, transversalPosition,
-                                                                        orientation);
-      x = longitudinalPosition.value();
-      y = transversalPosition.value();
-      theta = orientation.value();
+      //get odometry from the base
+      youBotConfiguration.baseConfiguration.youBotBase->getBasePosition(longitudinalPosition, transversalPosition, orientation);
+      //apply offsets
+      tf::Transform currentOdom;
+      tf::Vector3 rotatedOrigin;
+      rotatedOrigin.setX(longitudinalPosition.value());
+      rotatedOrigin.setY(transversalPosition.value());
+      rotatedOrigin=rotatedOrigin.rotate(tf::Vector3(0,0,1),tf::getYaw(odometryOffset.getRotation()));
+      currentOdom.setOrigin(rotatedOrigin+odometryOffset.getOrigin());
 
+      x = currentOdom.getOrigin().getX();
+      y = currentOdom.getOrigin().getY();
+      theta = orientation.value()+tf::getYaw(odometryOffset.getRotation());
+
+      last_x=x;
+      last_y=y;
+      last_theta=theta;
+
+      //get velocities
       youBotConfiguration.baseConfiguration.youBotBase->getBaseVelocity(longitudinalVelocity, transversalVelocity,
                                                                         angularVelocity);
       vx = longitudinalVelocity.value();
@@ -1008,7 +1027,6 @@ void YouBotOODLWrapper::computeOODLSensorReadings()
   {
     ROS_WARN_ONCE("%s", e.what());
   }
-
 }
 
 void YouBotOODLWrapper::publishOODLSensorReadings()
@@ -1206,6 +1224,70 @@ bool YouBotOODLWrapper::calibrateArmCallback(std_srvs::Empty::Request& request, 
 bool YouBotOODLWrapper::reconnectCallback(std_srvs::Empty::Request& request, std_srvs::Empty::Response& response)
 {
 
+  //store the current odometry so it won't be lost during the reconnect
+  quantity < si::length > longitudinalPosition;
+  quantity < si::length > transversalPosition;
+  quantity < plane_angle > orientation;
+
+  //uint32 encoder_values[4];
+  //bool has_encoder_values=false;
+
+  if (youBotConfiguration.hasBase) {
+
+    try {
+      youBotConfiguration.baseConfiguration.youBotBase->getBasePosition(longitudinalPosition, transversalPosition,
+                                                                        orientation);
+      //ROS_INFO_STREAM("Odom before reconnect: (x,y,theta)=(" << longitudinalPosition.value() << ", " << transversalPosition.value() << ", " << orientation.value() << ")");
+      tf::Transform currentOdom;
+      tf::Vector3 rotatedOrigin;
+      rotatedOrigin.setX(longitudinalPosition.value());
+      rotatedOrigin.setY(transversalPosition.value());
+      rotatedOrigin=rotatedOrigin.rotate(tf::Vector3(0,0,1),tf::getYaw(odometryOffset.getRotation()));
+      currentOdom.setOrigin(rotatedOrigin+odometryOffset.getOrigin());
+      tf::Quaternion q;
+      q.setRPY(0,0,orientation.value()+tf::getYaw(odometryOffset.getRotation()));
+      currentOdom.setRotation(q);
+      odometryOffset.setOrigin(currentOdom.getOrigin());
+      odometryOffset.setRotation(q);
+      ROS_INFO_STREAM("Odom before reconnect: (x,y,theta)=(" << odometryOffset.getOrigin().getX() << ", " << odometryOffset.getOrigin().getY() << ", " << tf::getYaw(odometryOffset.getRotation()) << ")");
+/*      int i;
+      for (i=0; i<4; i++) {
+        //encoder_values[i]=youBotConfiguration.baseConfiguration.youBotBase->getBaseJoint(i+1).getEncoder(); //+1 because joints are 1,2,3,4
+        //ROS_INFO_STREAM("Got encoder value " << i << ": " << encoder_values[i]);
+        youbot::JointSensedEncoderTicks data;
+        youBotConfiguration.baseConfiguration.youBotBase->getBaseJoint(i+1).getData(data);
+        ROS_INFO_STREAM("Signed Encoder ticks: " << data.encoderTicks);
+        encoder_values[i]=(uint32)data.encoderTicks;
+      }
+      has_encoder_values=true;
+*/
+    }
+    catch (std::exception& e) {
+      std::string errorMessage = e.what();
+      ROS_WARN("Cannot get the base position for reconnect: %s", errorMessage.c_str());
+
+      try {
+        ROS_INFO("Using the last-recorded position instead");
+        longitudinalPosition=last_x*si::meter;
+        transversalPosition=last_y*si::meter;
+        orientation=last_theta*si::radian;
+      }
+      catch (std::exception& darn) {
+        ROS_WARN("No last-recorded position, teleporting to zero :O  error:%s",darn.what());
+        longitudinalPosition=0*si::meter;
+        transversalPosition=0*si::meter;
+        orientation=0*si::radian;
+      }
+      odometryOffset.getOrigin().setX(longitudinalPosition.value());
+      odometryOffset.getOrigin().setY(transversalPosition.value());
+      tf::Quaternion q;
+      q.setRPY(0,0,last_theta);
+      odometryOffset.setRotation(q);
+      ROS_INFO_STREAM("Odom before reconnect: (x,y,theta)=(" << odometryOffset.getOrigin().getX() << ", " << odometryOffset.getOrigin().getY() << ", " << tf::getYaw(odometryOffset.getRotation()) << ")");
+    }
+  } //end store current odom
+
+
   this->stop();
 
   /* configuration */
@@ -1228,12 +1310,65 @@ bool YouBotOODLWrapper::reconnectCallback(std_srvs::Empty::Request& request, std
     armNameParam << "youBotArmName" << (++i);
   }
 
-  ROS_ASSERT((youBotHasBase == true) || (youBotHasArms == true)); // At least one should be true, otherwise nothing to be started.
+  // At least one should be true, otherwise nothing to be started.
+  ROS_ASSERT((youBotHasBase == true) || (youBotHasArms == true));
   if (youBotHasBase == true)
   {
     this->initializeBase(this->youBotConfiguration.baseConfiguration.baseID);
-  }
+    //set the encoder values
+/*    if (has_encoder_values) {
+      int i;
+      for (i=0; i<4; i++) {
+        ROS_INFO_STREAM("Setting encoder reference for wheel " << (i+1) << " to " << encoder_values[i]);
+        youBotConfiguration.baseConfiguration.youBotBase->getBaseJoint(i+1).setEncoder(encoder_values[i]);
+      }
+    }
+*/
+    //set velocity of base to zero
+    quantity < si::velocity > longitudinalVelocity;
+    quantity < si::velocity > transversalVelocity;
+    quantity < si::angular_velocity > angularVelocity;
 
+    longitudinalVelocity = 0.0 * meter_per_second;
+    transversalVelocity = 0.0 * meter_per_second;
+    angularVelocity = 0.0 * radian_per_second;
+
+    try
+    {
+      youBotConfiguration.baseConfiguration.youBotBase->setBaseVelocity(longitudinalVelocity, transversalVelocity,
+                                                                        angularVelocity);
+    }
+    catch (std::exception& e)
+    {
+      std::string errorMessage = e.what();
+      ROS_WARN("Cannot set base velocities: %s", errorMessage.c_str());
+      return false;
+    } //end set velocity of base to zero
+
+    //get odom again to see if we have moved
+    try {
+      youBotConfiguration.baseConfiguration.youBotBase->getBasePosition(longitudinalPosition, transversalPosition,
+                                                                        orientation);
+      tf::Transform currentOdom;
+      tf::Vector3 rotatedOrigin;
+      rotatedOrigin.setX(longitudinalPosition.value());
+      rotatedOrigin.setY(transversalPosition.value());
+      rotatedOrigin=rotatedOrigin.rotate(tf::Vector3(0,0,1),tf::getYaw(odometryOffset.getRotation()));
+      currentOdom.setOrigin(rotatedOrigin+odometryOffset.getOrigin());
+      currentOdom.getRotation().setRPY(0,0,orientation.value()+tf::getYaw(odometryOffset.getRotation()));
+      ROS_INFO_STREAM("Odom after reconnect: (x,y,theta)=(" << currentOdom.getOrigin().getX() << ", " << currentOdom.getOrigin().getY() << ", " << tf::getYaw(currentOdom.getRotation()) << ")");
+    }
+    catch (std::exception& e) {
+      std::string errorMessage = e.what();
+      ROS_WARN("Cannot get the base position at the end of reconnect: %s", errorMessage.c_str());
+      longitudinalPosition=0*si::meter;
+      transversalPosition=0*si::meter;
+      orientation=0*si::radian;
+    }
+
+  } //end get odom again
+
+  //initialize arm(s)
   if (youBotHasArms == true)
   {
     std::vector<std::string>::iterator armNameIter;
@@ -1289,18 +1424,18 @@ void YouBotOODLWrapper::publishArmAndBaseDiagnostics(double publish_rate_in_secs
   platformStateMessage.header.stamp = ros::Time::now();
 
   if (youBotConfiguration.hasBase && areBaseMotorsSwitchedOn)
-    platformStateMessage.circuit_state[0] = youbot_oodl::PowerBoardState::STATE_ENABLED;
+    platformStateMessage.circuit_state[0] = youbot_common::PowerBoardState::STATE_ENABLED;
   else if (youBotConfiguration.hasBase && !areBaseMotorsSwitchedOn)
-    platformStateMessage.circuit_state[0] = youbot_oodl::PowerBoardState::STATE_STANDBY;
+    platformStateMessage.circuit_state[0] = youbot_common::PowerBoardState::STATE_STANDBY;
   else
-    platformStateMessage.circuit_state[0] = youbot_oodl::PowerBoardState::STATE_DISABLED;
+    platformStateMessage.circuit_state[0] = youbot_common::PowerBoardState::STATE_DISABLED;
 
   if (youBotConfiguration.hasArms && areArmMotorsSwitchedOn)
-    platformStateMessage.circuit_state[1] = youbot_oodl::PowerBoardState::STATE_ENABLED;
+    platformStateMessage.circuit_state[1] = youbot_common::PowerBoardState::STATE_ENABLED;
   else if (youBotConfiguration.hasArms && !areArmMotorsSwitchedOn)
-    platformStateMessage.circuit_state[1] = youbot_oodl::PowerBoardState::STATE_STANDBY;
+    platformStateMessage.circuit_state[1] = youbot_common::PowerBoardState::STATE_STANDBY;
   else
-    platformStateMessage.circuit_state[1] = youbot_oodl::PowerBoardState::STATE_DISABLED;
+    platformStateMessage.circuit_state[1] = youbot_common::PowerBoardState::STATE_DISABLED;
 
   // publish established messages
   dashboardMessagePublisher.publish(platformStateMessage);

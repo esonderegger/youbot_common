@@ -40,7 +40,7 @@
 #ifndef JOINTSTATEOBSERVEROODL_H
 #define	JOINTSTATEOBSERVEROODL_H
 
-#include <youbot_oodl/youbot_trajectory_action_server/joint_state_observer.h>
+#include <youbot_trajectory_action_server/joint_state_observer.h>
 
 #include <brics_actuator/JointVelocities.h>
 #include <brics_actuator/JointTorques.h>
@@ -54,17 +54,17 @@ class YouBotOODLWrapper;
 class JointStateObserverOODL : public JointStateObserver
 {
 public:
-  JointStateObserverOODL(YouBotOODLWrapper* youBot, int youBotArmIndex);
-  JointStateObserverOODL(const JointStateObserverOODL& orig);
-  virtual ~JointStateObserverOODL();
+    JointStateObserverOODL(YouBotOODLWrapper* youBot, int youBotArmIndex);
+    JointStateObserverOODL(const JointStateObserverOODL& orig);
+    virtual ~JointStateObserverOODL();
 
-  virtual void updatePosition(const brics_actuator::JointPositions& positions);
-  virtual void updateVelocity(const brics_actuator::JointVelocities& velocities);
-  virtual void updateTorque(const brics_actuator::JointTorques& torques);
+    virtual void updatePosition(const brics_actuator::JointPositions& positions);
+    virtual void updateVelocity(const brics_actuator::JointVelocities& velocities);
+    virtual void updateTorque(const brics_actuator::JointTorques& torques);
 
 private:
-  YouBotOODLWrapper* youBot;
-  int youBotArmIndex;
+    YouBotOODLWrapper* youBot;
+    int youBotArmIndex;
 };
 }
 

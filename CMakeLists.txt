@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(youbot_common)
 
+set (orocos_kdl_DIR /opt/ros/hydro/share/orocos_kdl) #change the path to match your complied directory of orocos_kdl
+
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
